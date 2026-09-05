@@ -3,7 +3,7 @@ import {
   MAX_IMPORT_BYTES,
   addShareSchema,
   getExtension,
-  renameDocumentSchema,
+  updateDocumentSchema,
   validateImportFile,
 } from "./validation";
 
@@ -44,15 +44,25 @@ describe("validateImportFile", () => {
   });
 });
 
-describe("renameDocumentSchema", () => {
-  it("rejects a blank title", () => {
-    expect(renameDocumentSchema.safeParse({ title: "   " }).success).toBe(false);
+describe("updateDocumentSchema", () => {
+  it("rejects a blank title — a whitespace-only rename must not wipe the title", () => {
+    expect(updateDocumentSchema.safeParse({ title: "   " }).success).toBe(false);
   });
 
   it("trims whitespace from a valid title", () => {
-    const result = renameDocumentSchema.safeParse({ title: "  Q3 Review  " });
+    const result = updateDocumentSchema.safeParse({ title: "  Q3 Review  " });
     expect(result.success).toBe(true);
     if (result.success) expect(result.data.title).toBe("Q3 Review");
+  });
+
+  it("allows a content-only update (autosave sends no title)", () => {
+    const result = updateDocumentSchema.safeParse({ content: { type: "doc", content: [] } });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.title).toBeUndefined();
+  });
+
+  it("rejects a title longer than the 200-char cap", () => {
+    expect(updateDocumentSchema.safeParse({ title: "x".repeat(201) }).success).toBe(false);
   });
 });
 

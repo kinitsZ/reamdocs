@@ -21,7 +21,9 @@ backend), Prisma + Postgres (via Supabase), and Tiptap for the editor.
 - **Sharing**: the owner can grant another seeded user View or Edit access by email, change or revoke it later. Owned and shared-with-you documents are visually distinct (shared items carry an amber accent) everywhere in the list.
 - **Access control**: View-access users get a read-only editor with a banner explaining why, rather than a disabled-but-editable one. All of this is enforced server-side in the API routes, not just hidden in the UI.
 - **Request access**: a view-only user can ask the owner to upgrade them to edit access. It's an on-site request, not an email/push notification — the owner sees a badge on the document in their list and a "Requesting edit access" section in the Share dialog, with one-click Grant/Dismiss.
-- **Quick actions (⋯ menu)**: each owned document in the list has Open / Share / Delete without needing to open it first.
+- **Quick actions (⋯ menu)**: each owned document in the list has Open / Share / Export / Delete without needing to open it first.
+- **Export** (stretch): any document you can open can be exported as **Markdown** or **PDF**. Both are generated server-side at `GET /api/documents/[id]/export?format=md|pdf` and access-checked like everything else. The PDF is real vector text (selectable/searchable), not a screenshot — rendered with `@react-pdf/renderer`, no headless browser required.
+- **Cmd/Ctrl+S** forces an immediate save. There's deliberately no Save button — see the architecture note.
 - **Auth**: mocked — pick one of 3 seeded users, no password. Sets an httpOnly session cookie. See "Why mocked auth" below.
 
 ## Tech stack
@@ -71,11 +73,16 @@ backend), Prisma + Postgres (via Supabase), and Tiptap for the editor.
 ```bash
 npm test
 ```
-Covers the access-control logic (`lib/access.ts` — the owner/editor/viewer rules
-that both the API routes and the editor's read-only mode depend on) and file-import
-validation (`lib/validation.ts` — extension/size checks and the request schemas).
-These are the two areas where a silent bug would be worst: wrong access control
-leaks or blocks data, wrong validation lets a bad file through.
+29 unit tests across the three places where a silent bug would be worst:
+
+- `lib/access.ts` — the owner/editor/viewer rules that both the API routes and the
+  editor's read-only mode depend on. Wrong access control leaks or blocks data.
+- `lib/validation.ts` — import extension/size checks and the PATCH body schema.
+- `lib/save-queue.ts` — the editor's debounced autosave. Includes a regression test
+  for a real data-loss bug: an edit made *while a save was in flight* used to be
+  wiped by that save's completion and then never persisted. (Verified the test
+  fails if the fix is reverted — a regression test that passes either way is worse
+  than none.)
 
 ## Deployment (Vercel)
 

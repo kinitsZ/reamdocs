@@ -17,10 +17,3 @@ export async function getCurrentUser() {
   if (!userId) return null;
   return prisma.user.findUnique({ where: { id: userId } });
 }
-
-/** Server Component / layout guard. Use in Route Handlers via getSessionUserId + 401 instead. */
-export async function requireUser() {
-  const user = await getCurrentUser();
-  if (!user) return null;
-  return user;
-}

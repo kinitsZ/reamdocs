@@ -37,11 +37,16 @@ export async function POST(request: Request, { params }: RouteContext) {
     return NextResponse.json({ error: "That person already owns this document." }, { status: 400 });
   }
 
-  const share = await prisma.share.upsert({
-    where: { documentId_userId: { documentId: id, userId: target.id } },
-    update: { role: parsed.data.role },
-    create: { documentId: id, userId: target.id, role: parsed.data.role },
-  });
+  // Granting access directly also answers any pending access request from that
+  // person — otherwise their request would linger and keep the owner's badge lit.
+  const [share] = await prisma.$transaction([
+    prisma.share.upsert({
+      where: { documentId_userId: { documentId: id, userId: target.id } },
+      update: { role: parsed.data.role },
+      create: { documentId: id, userId: target.id, role: parsed.data.role },
+    }),
+    prisma.accessRequest.deleteMany({ where: { documentId: id, userId: target.id } }),
+  ]);
 
   return NextResponse.json({
     share: { userId: target.id, name: target.name, email: target.email, initials: target.initials, role: share.role },

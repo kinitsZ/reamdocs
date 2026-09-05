@@ -32,10 +32,15 @@ export async function PATCH(request: Request, { params }: RouteContext) {
   }
 
   try {
-    const share = await prisma.share.update({
-      where: { documentId_userId: { documentId: id, userId: targetUserId } },
-      data: { role: parsed.data.role },
-    });
+    // Deciding someone's role explicitly also resolves any pending request from
+    // them, so the owner isn't left with a badge for a question they've answered.
+    const [share] = await prisma.$transaction([
+      prisma.share.update({
+        where: { documentId_userId: { documentId: id, userId: targetUserId } },
+        data: { role: parsed.data.role },
+      }),
+      prisma.accessRequest.deleteMany({ where: { documentId: id, userId: targetUserId } }),
+    ]);
     return NextResponse.json({ share: { userId: share.userId, role: share.role } });
   } catch {
     return NextResponse.json({ error: "That person doesn't have access to this document." }, { status: 404 });
@@ -50,6 +55,12 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
   const check = await requireOwner(id, callerId);
   if ("error" in check) return check.error;
 
-  await prisma.share.deleteMany({ where: { documentId: id, userId: targetUserId } });
+  // Revoking access also drops any pending request from that person — otherwise a
+  // stale request could later be approved and silently re-grant EDIT to someone
+  // the owner deliberately removed.
+  await prisma.$transaction([
+    prisma.share.deleteMany({ where: { documentId: id, userId: targetUserId } }),
+    prisma.accessRequest.deleteMany({ where: { documentId: id, userId: targetUserId } }),
+  ]);
   return NextResponse.json({ ok: true });
 }

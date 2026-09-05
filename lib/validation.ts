@@ -34,16 +34,9 @@ export function validateImportFile(file: { name: string; size: number }): FileVa
   return { ok: true };
 }
 
-export const renameDocumentSchema = z.object({
-  title: z.string().trim().min(1, "Title can't be empty").max(200),
-});
-
-export const saveContentSchema = z.object({
-  content: z.unknown(),
-});
-
+/** Body schema for PATCH /api/documents/[id] — renames, autosaves, or both. */
 export const updateDocumentSchema = z.object({
-  title: z.string().trim().min(1).max(200).optional(),
+  title: z.string().trim().min(1, "Title can't be empty").max(200).optional(),
   content: z.unknown().optional(),
 });
 

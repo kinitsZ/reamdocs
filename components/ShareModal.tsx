@@ -65,18 +65,38 @@ export function ShareModal({
     }
   }
 
+  // These update optimistically for responsiveness, then roll back if the server
+  // rejects — otherwise the dialog would show access that was never granted.
   async function changeRole(userId: string, nextRole: "VIEW" | "EDIT") {
+    const previous = shares.find((s) => s.userId === userId)?.role;
+    setError(null);
     setShares((prev) => prev.map((s) => (s.userId === userId ? { ...s, role: nextRole } : s)));
-    await fetch(`/api/documents/${docId}/shares/${userId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role: nextRole }),
-    });
+    try {
+      const res = await fetch(`/api/documents/${docId}/shares/${userId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: nextRole }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      if (previous) {
+        setShares((prev) => prev.map((s) => (s.userId === userId ? { ...s, role: previous } : s)));
+      }
+      setError("Couldn't change that person's access — try again.");
+    }
   }
 
   async function removeShare(userId: string) {
+    const removed = shares.find((s) => s.userId === userId);
+    setError(null);
     setShares((prev) => prev.filter((s) => s.userId !== userId));
-    await fetch(`/api/documents/${docId}/shares/${userId}`, { method: "DELETE" });
+    try {
+      const res = await fetch(`/api/documents/${docId}/shares/${userId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+    } catch {
+      if (removed) setShares((prev) => [...prev, removed]);
+      setError("Couldn't remove that person's access — try again.");
+    }
   }
 
   async function approveRequest(request: AccessRequestEntry) {
@@ -93,11 +113,21 @@ export function ShareModal({
     }
   }
 
-  async function dismissRequest(userId: string) {
-    setResolvingId(userId);
-    setRequests((prev) => prev.filter((r) => r.userId !== userId));
-    await fetch(`/api/documents/${docId}/access-requests/${userId}`, { method: "DELETE" });
-    setResolvingId(null);
+  async function dismissRequest(request: AccessRequestEntry) {
+    setResolvingId(request.userId);
+    setError(null);
+    setRequests((prev) => prev.filter((r) => r.userId !== request.userId));
+    try {
+      const res = await fetch(`/api/documents/${docId}/access-requests/${request.userId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      setRequests((prev) => [...prev, request]);
+      setError("Couldn't dismiss that request — try again.");
+    } finally {
+      setResolvingId(null);
+    }
   }
 
   return (
@@ -174,7 +204,7 @@ export function ShareModal({
                   <button
                     type="button"
                     disabled={resolvingId === r.userId}
-                    onClick={() => dismissRequest(r.userId)}
+                    onClick={() => dismissRequest(r)}
                     className="btn btn-text text-xs disabled:opacity-60"
                     style={{ color: "var(--ream-ink-soft)" }}
                   >

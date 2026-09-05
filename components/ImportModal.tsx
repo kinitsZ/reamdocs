@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { validateImportFile } from "@/lib/validation";
 
 export function ImportModal({ onClose }: { onClose: () => void }) {
   const router = useRouter();
@@ -9,9 +10,22 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [dragging, setDragging] = useState(false);
 
+  // Same check the API route runs — this one is only for instant feedback, the
+  // server's is the one that actually decides.
   function pick(f: File | null) {
     setError(null);
+    if (!f) {
+      setFile(null);
+      return;
+    }
+    const validation = validateImportFile({ name: f.name, size: f.size });
+    if (!validation.ok) {
+      setFile(null);
+      setError(validation.message);
+      return;
+    }
     setFile(f);
   }
 
@@ -57,8 +71,21 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragging(true);
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragging(false);
+              pick(e.dataTransfer.files?.[0] ?? null);
+            }}
             className="btn import-drop w-full rounded-[10px] border border-dashed px-5 py-[34px] text-center"
-            style={{ borderColor: "var(--ream-border)", background: "var(--ream-surface)" }}
+            style={{
+              borderColor: dragging ? "var(--ream-accent)" : "var(--ream-border)",
+              background: dragging ? "oklch(0.98 0.012 250)" : "var(--ream-surface)",
+            }}
           >
             <div
               className="mx-auto mb-3.5 h-[42px] w-[34px] rounded-[3px] border"

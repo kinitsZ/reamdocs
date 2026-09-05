@@ -45,7 +45,10 @@ _Fill in the blanks below before zipping/uploading to Drive._
 - Request access: a view-only user can request edit access; the owner sees it as
   an on-site badge on the document + a Grant/Dismiss panel in Share — a real,
   working flow, not the inert placeholder from the original design mockup
-- Quick actions (⋯) menu per document in the list: Open / Share / Delete
+- Quick actions (⋯) menu per document in the list: Open / Share / Export / Delete
+- Export to Markdown and PDF (stretch goal), server-rendered and access-checked;
+  the PDF contains real selectable text, not a screenshot
+- Cmd/Ctrl+S forces an immediate save (no Save button by design — see ARCHITECTURE.md)
 - Real empty states (no documents yet / nothing shared with you) and real
   error states (bad file type, oversized file, unknown share email, failed
   autosave with retry)
@@ -56,8 +59,8 @@ _Fill in the blanks below before zipping/uploading to Drive._
 - No "insert file into an existing draft" — import always creates a new document
 - Request access is on-site only (no email/push notification if the owner isn't
   currently looking at the app)
-- One automated test suite (Vitest, unit-level on access control + validation) —
-  no e2e coverage yet
+- Unit tests only (Vitest: access control, validation, autosave queue) — no e2e
+  coverage yet
 
 ### What I'd build next with 2–4 more hours
 See the end of `ARCHITECTURE.md`.

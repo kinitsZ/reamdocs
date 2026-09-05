@@ -198,15 +198,47 @@ button:disabled {
   line-height: 1.65;
   margin: 0 0 18px;
 }
+/* Tailwind's preflight resets lists to `list-style: none`, so markers have to be
+   restored explicitly or bullet/numbered lists render indistinguishably from
+   plain paragraphs. */
 .ream-prose ul,
 .ream-prose ol {
   font-size: 17px;
   line-height: 1.65;
   margin: 0 0 18px;
-  padding-left: 22px;
+  padding-left: 26px;
+}
+/* Longhands, not the `list-style` shorthand: minifiers drop `disc` from the
+   shorthand as "redundant", which is only true when preflight hasn't already
+   set list-style: none. */
+.ream-prose ul {
+  list-style-type: disc;
+  list-style-position: outside;
+}
+.ream-prose ol {
+  list-style-type: decimal;
+  list-style-position: outside;
+}
+.ream-prose ul ul {
+  list-style-type: circle;
+}
+.ream-prose ul ul ul {
+  list-style-type: square;
 }
 .ream-prose li {
   margin-bottom: 6px;
+}
+/* Tiptap wraps each list item's text in a <p>; without this it inherits the
+   18px paragraph margin and the list gets big gaps between items. */
+.ream-prose li > p {
+  margin: 0;
+}
+.ream-prose li > ul,
+.ream-prose li > ol {
+  margin: 6px 0 0;
+}
+.ream-prose li::marker {
+  color: var(--ream-ink-faint);
 }
 .ream-prose blockquote {
   margin: 26px 0;

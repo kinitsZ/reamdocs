@@ -17,6 +17,30 @@ back into a ProseMirror doc on every load and risking lossy round-trips (attrs,
 marks, node identity). Storing the JSON directly means what comes out of the
 editor is exactly what goes back in.
 
+**Tricky logic gets pulled out of components so it can be tested.**
+`lib/save-queue.ts` holds the editor's debounced, single-flight autosave. It
+started as inline `useRef` bookkeeping inside `Editor.tsx` and had a genuine
+data-loss bug: an edit typed while a save was in flight got wiped when that save
+completed, and was never sent. Extracting it made the failure case expressible as
+a test (`lib/save-queue.test.ts`) instead of something you'd only catch by typing
+fast at the right moment.
+
+**No Save button, on purpose.** Autosave plus a status label ("Saving…" /
+"Saved 12s ago" / "Couldn't save — retry") is the honest model for a Docs-style
+editor. Adding a Save button would imply that unsaved work is lost if you don't
+click it, which is a worse promise than the one the app actually keeps.
+Cmd/Ctrl+S is intercepted to flush immediately, because people press it
+reflexively and the browser's "Save page as" dialog is not what they meant.
+
+**Export renders on the server, without a headless browser.** Markdown goes
+through a small serializer (`lib/markdown.ts`, unit tested against the exact node
+and mark set this editor can produce). PDF uses `@react-pdf/renderer`, which
+produces real vector text rather than a rasterised screenshot, and needs no
+Chromium binary — which matters on serverless, where bundling Chromium means a
+~50MB function and multi-second cold starts. Both are exposed on one
+access-checked route so a view-only collaborator can export, but a stranger gets
+a 403.
+
 **Access control as a pure function (`lib/access.ts`), not scattered `if`s.**
 `getAccessLevel(doc, userId)` → `"OWNER" | "VIEW" | "EDIT" | null` is the single
 source of truth. Every API route and the editor's read-only mode call into it.

@@ -1,16 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import Placeholder from "@tiptap/extension-placeholder";
 import { tiptapExtensions } from "@/lib/tiptap-extensions";
 import { relativeTime } from "@/lib/relative-time";
+import { createSaveQueue, type SaveState } from "@/lib/save-queue";
 import { ShareModal, type ShareEntry, type AccessRequestEntry } from "./ShareModal";
 import { ImportModal } from "./ImportModal";
 
 type Access = "OWNER" | "EDIT" | "VIEW";
-type SaveState = "idle" | "saving" | "saved" | "error";
 
 const HEADING_OPTIONS = [
   { label: "Normal text", level: 0 },
@@ -63,45 +63,30 @@ export function Editor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const pendingContent = useRef<JSONContent | null>(null);
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   // Re-render periodically so the "Saved Ns ago" label stays fresh without a live clock component.
   useEffect(() => {
     const id = setInterval(() => forceTick((t) => t + 1), 15_000);
     return () => clearInterval(id);
   }, []);
 
-  const saveContent = useCallback(
-    async (content: JSONContent) => {
-      setSaveState("saving");
-      try {
-        const res = await fetch(`/api/documents/${doc.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content }),
-        });
-        if (!res.ok) throw new Error();
-        pendingContent.current = null;
-        setLastSavedAt(new Date());
-        setSaveState("saved");
-      } catch {
-        pendingContent.current = content;
-        setSaveState("error");
-      }
-    },
+  // Debounce/single-flight behaviour lives in lib/save-queue.ts so the tricky
+  // "edited while a save was in flight" path can be unit tested.
+  const queue = useMemo(
+    () =>
+      createSaveQueue<JSONContent>({
+        delay: 800,
+        onStateChange: setSaveState,
+        onSaved: setLastSavedAt,
+        save: async (content) => {
+          const res = await fetch(`/api/documents/${doc.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ content }),
+          });
+          if (!res.ok) throw new Error("Save rejected");
+        },
+      }),
     [doc.id]
-  );
-
-  const scheduleSave = useCallback(
-    (content: JSONContent) => {
-      pendingContent.current = content;
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(() => {
-        if (pendingContent.current) saveContent(pendingContent.current);
-      }, 800);
-    },
-    [saveContent]
   );
 
   const editor = useEditor({
@@ -117,32 +102,75 @@ export function Editor({
     },
     onUpdate: ({ editor }) => {
       if (!canEdit) return;
-      scheduleSave(editor.getJSON());
+      queue.schedule(editor.getJSON());
     },
   });
 
+  // People hit Cmd/Ctrl+S reflexively in an editor. There's no Save button by
+  // design (autosave + a status label is the honest model), but intercepting the
+  // shortcut to flush immediately beats the browser's "Save page as" dialog.
   useEffect(() => {
+    if (!canEdit) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        void queue.flushNow();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [canEdit, queue]);
+
+  useEffect(() => {
+    const docId = doc.id;
     return () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
+      queue.cancelScheduled();
+      // Navigating away inside the debounce window would otherwise drop the last
+      // edits. `keepalive` lets the request outlive the unmount/page transition.
+      const unsaved = queue.pendingValue;
+      if (unsaved !== null) {
+        fetch(`/api/documents/${docId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: unsaved }),
+          keepalive: true,
+        }).catch(() => {});
+      }
     };
-  }, []);
+  }, [doc.id, queue]);
+
+  // Tracks the last title the server accepted, so "rename away and back again"
+  // still saves, and a failed rename can roll the input back.
+  const savedTitle = useRef(doc.title);
 
   async function saveTitle(next: string) {
     const trimmed = next.trim();
-    if (!trimmed || trimmed === doc.title) {
-      setTitle(doc.title === trimmed ? trimmed : doc.title);
+    if (!trimmed) {
+      setTitle(savedTitle.current); // empty titles aren't allowed — revert the input
       return;
     }
+    if (trimmed === savedTitle.current) {
+      setTitle(trimmed);
+      return;
+    }
+
     setTitle(trimmed);
-    await fetch(`/api/documents/${doc.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: trimmed }),
-    }).catch(() => setNotice("Couldn't rename the document — try again."));
+    try {
+      const res = await fetch(`/api/documents/${doc.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: trimmed }),
+      });
+      if (!res.ok) throw new Error();
+      savedTitle.current = trimmed;
+    } catch {
+      setTitle(savedTitle.current);
+      setNotice("Couldn't rename the document — try again.");
+    }
   }
 
   function retrySave() {
-    if (pendingContent.current) saveContent(pendingContent.current);
+    void queue.flushNow();
   }
 
   async function requestAccess() {
@@ -224,6 +252,8 @@ export function Editor({
               </button>
             )}
             <div className="flex-1" />
+
+            <ExportMenu docId={doc.id} />
 
             {isOwner && confirmDelete ? (
               <div className="flex items-center gap-2 rounded-[8px] border px-2.5 py-1.5" style={{ borderColor: "var(--ream-error-border)", background: "var(--ream-error-bg)" }}>
@@ -379,6 +409,65 @@ export function Editor({
 
 function Divider() {
   return <div className="mx-2 h-5 w-px" style={{ background: "var(--ream-border)" }} />;
+}
+
+/** Export is available to anyone who can open the document, viewers included. */
+function ExportMenu({ docId }: { docId: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="btn btn-outline rounded-[8px] px-3 py-1.5 text-xs font-medium"
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        Export
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 top-full z-30 mt-1 w-44 overflow-hidden rounded-[8px] border py-1"
+          style={{
+            borderColor: "var(--ream-border)",
+            background: "var(--ream-surface-solid)",
+            boxShadow: "0 8px 24px oklch(0.2 0.02 265 / 0.15)",
+          }}
+        >
+          <a
+            href={`/api/documents/${docId}/export?format=md`}
+            role="menuitem"
+            onClick={() => setOpen(false)}
+            className="btn btn-ghost block px-3 py-2 text-left text-[13px] no-underline"
+            style={{ color: "var(--ream-ink)" }}
+          >
+            Markdown (.md)
+          </a>
+          <a
+            href={`/api/documents/${docId}/export?format=pdf`}
+            role="menuitem"
+            onClick={() => setOpen(false)}
+            className="btn btn-ghost block px-3 py-2 text-left text-[13px] no-underline"
+            style={{ color: "var(--ream-ink)" }}
+          >
+            PDF (.pdf)
+          </a>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function ToolbarButton({

@@ -10,6 +10,7 @@ export function DocumentMenu({ docId }: { docId: string }) {
   const [open, setOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -26,14 +27,18 @@ export function DocumentMenu({ docId }: { docId: string }) {
 
   async function handleDelete() {
     setBusy(true);
+    setError(null);
     try {
       const res = await fetch(`/api/documents/${docId}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
       router.refresh();
-    } finally {
-      setBusy(false);
       setOpen(false);
       setConfirmDelete(false);
+    } catch {
+      // Keep the menu open so the failure is visible rather than looking like a no-op.
+      setError("Couldn't delete — try again.");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -76,6 +81,22 @@ export function DocumentMenu({ docId }: { docId: string }) {
               >
                 Share…
               </Link>
+              <a
+                href={`/api/documents/${docId}/export?format=md`}
+                role="menuitem"
+                className="btn btn-ghost block px-3 py-2 text-left text-[13px] no-underline"
+                style={{ color: "var(--ream-ink)" }}
+              >
+                Export Markdown
+              </a>
+              <a
+                href={`/api/documents/${docId}/export?format=pdf`}
+                role="menuitem"
+                className="btn btn-ghost block px-3 py-2 text-left text-[13px] no-underline"
+                style={{ color: "var(--ream-ink)" }}
+              >
+                Export PDF
+              </a>
               <button
                 type="button"
                 role="menuitem"
@@ -91,6 +112,11 @@ export function DocumentMenu({ docId }: { docId: string }) {
               <div className="mb-2 text-xs" style={{ color: "var(--ream-ink-soft)" }}>
                 Delete this document?
               </div>
+              {error && (
+                <div className="mb-2 text-xs" style={{ color: "var(--ream-error-ink)" }}>
+                  {error}
+                </div>
+              )}
               <div className="flex gap-2">
                 <button
                   type="button"
