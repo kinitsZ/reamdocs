@@ -6,7 +6,7 @@ _Fill in the blanks below before zipping/uploading to Drive._
 
 - **Live app**: https://reamdocs.vercel.app
 - **Repo**: https://github.com/kinitsZ/reamdocs
-- **Walkthrough video** (3–5 min, unlisted): `<Loom/YouTube URL>` — also saved as
+- **Walkthrough video** (3–5 min, unlisted): `https://youtu.be/_hAKD-seh4k` — also saved as
   a plain text file per the assignment's deliverable list.
 
 ## Test accounts (no password — pick from the sign-in screen)
