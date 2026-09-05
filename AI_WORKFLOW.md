@@ -51,8 +51,7 @@ in this build session so it should be accurate, but it's written on your behalf.
 - **Prisma version pin.** Left as recommended (6.19.3) rather than adopting the
   newer major versions the registry defaulted to — a case where the more
   cautious, less impressive-sounding choice was the right call under a time box.
-- _(Add anything you changed by hand after this point, or any UI/copy tweaks you
-  made that diverge from what's described here.)_
+
 
 ## How correctness, UX, and reliability were verified
 
