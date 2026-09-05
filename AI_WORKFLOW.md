@@ -78,6 +78,4 @@ in this build session so it should be accurate, but it's written on your behalf.
   clicking through the actual UI, not by more curl calls. Kept in as a concrete
   example of where AI-only verification stops and a human driving the app
   actually matters.
-- _(Add: what else you personally clicked through — creating a doc, importing a
-  file, sharing between two seeded accounts, confirming the read-only banner as
-  the viewer account. This is the part only you can attest to.)_
+
