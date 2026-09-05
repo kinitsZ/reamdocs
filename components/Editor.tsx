@@ -1,0 +1,327 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
+import Placeholder from "@tiptap/extension-placeholder";
+import { tiptapExtensions } from "@/lib/tiptap-extensions";
+import { relativeTime } from "@/lib/relative-time";
+import { ShareModal, type ShareEntry } from "./ShareModal";
+import { ImportModal } from "./ImportModal";
+
+type Access = "OWNER" | "EDIT" | "VIEW";
+type SaveState = "idle" | "saving" | "saved" | "error";
+
+const HEADING_OPTIONS = [
+  { label: "Normal text", level: 0 },
+  { label: "Heading 1", level: 1 },
+  { label: "Heading 2", level: 2 },
+  { label: "Heading 3", level: 3 },
+];
+
+export function Editor({
+  doc,
+  access,
+  shares,
+}: {
+  doc: { id: string; title: string; content: JSONContent; ownerName: string };
+  access: Access;
+  shares: ShareEntry[];
+}) {
+  const canEdit = access === "OWNER" || access === "EDIT";
+  const isOwner = access === "OWNER";
+
+  const [title, setTitle] = useState(doc.title);
+  const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [, forceTick] = useState(0);
+
+  const pendingContent = useRef<JSONContent | null>(null);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Re-render periodically so the "Saved Ns ago" label stays fresh without a live clock component.
+  useEffect(() => {
+    const id = setInterval(() => forceTick((t) => t + 1), 15_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const saveContent = useCallback(
+    async (content: JSONContent) => {
+      setSaveState("saving");
+      try {
+        const res = await fetch(`/api/documents/${doc.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content }),
+        });
+        if (!res.ok) throw new Error();
+        pendingContent.current = null;
+        setLastSavedAt(new Date());
+        setSaveState("saved");
+      } catch {
+        pendingContent.current = content;
+        setSaveState("error");
+      }
+    },
+    [doc.id]
+  );
+
+  const scheduleSave = useCallback(
+    (content: JSONContent) => {
+      pendingContent.current = content;
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveTimer.current = setTimeout(() => {
+        if (pendingContent.current) saveContent(pendingContent.current);
+      }, 800);
+    },
+    [saveContent]
+  );
+
+  const editor = useEditor({
+    extensions: useMemo(
+      () => [...tiptapExtensions, Placeholder.configure({ placeholder: "Start writing…" })],
+      []
+    ),
+    content: doc.content,
+    editable: canEdit,
+    immediatelyRender: false,
+    editorProps: {
+      attributes: { class: "ream-prose" },
+    },
+    onUpdate: ({ editor }) => {
+      if (!canEdit) return;
+      scheduleSave(editor.getJSON());
+    },
+  });
+
+  useEffect(() => {
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
+  }, []);
+
+  async function saveTitle(next: string) {
+    const trimmed = next.trim();
+    if (!trimmed || trimmed === doc.title) {
+      setTitle(doc.title === trimmed ? trimmed : doc.title);
+      return;
+    }
+    setTitle(trimmed);
+    await fetch(`/api/documents/${doc.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: trimmed }),
+    }).catch(() => setNotice("Couldn't rename the document — try again."));
+  }
+
+  function retrySave() {
+    if (pendingContent.current) saveContent(pendingContent.current);
+  }
+
+  const saveLabel =
+    saveState === "saving"
+      ? "Saving…"
+      : saveState === "error"
+      ? "Couldn't save"
+      : lastSavedAt
+      ? `Saved ${relativeTime(lastSavedAt)}`
+      : "";
+
+  const currentHeadingLevel = editor?.isActive("heading", { level: 1 })
+    ? 1
+    : editor?.isActive("heading", { level: 2 })
+    ? 2
+    : editor?.isActive("heading", { level: 3 })
+    ? 3
+    : 0;
+
+  return (
+    <div className="flex flex-1 flex-col">
+      <div className="border-b px-5 pt-3" style={{ background: "var(--ream-surface)", borderColor: "var(--ream-border)" }}>
+        <div className="mx-auto max-w-[1080px]">
+          <div className="flex flex-wrap items-center gap-3">
+            <input
+              value={title}
+              disabled={!canEdit}
+              onChange={(e) => setTitle(e.target.value)}
+              onBlur={(e) => saveTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              }}
+              className="-ml-2 min-w-0 flex-none rounded-md px-2 py-0.5 disabled:cursor-default"
+              style={{
+                fontFamily: "var(--font-doc)",
+                fontSize: 21,
+                fontWeight: 500,
+                letterSpacing: "-0.01em",
+                width: `${Math.max(title.length, 4) + 1}ch`,
+                background: "transparent",
+              }}
+            />
+            {saveLabel && (
+              <button
+                type="button"
+                onClick={saveState === "error" ? retrySave : undefined}
+                className="font-mono text-[11px]"
+                style={{ color: saveState === "error" ? "var(--ream-error-ink)" : "var(--ream-ink-faint)", cursor: saveState === "error" ? "pointer" : "default" }}
+              >
+                {saveLabel}
+                {saveState === "error" ? " — retry" : ""}
+              </button>
+            )}
+            <div className="flex-1" />
+            {isOwner ? (
+              <button
+                type="button"
+                onClick={() => setShareOpen(true)}
+                className="rounded-[8px] px-4 py-2 text-[13px] font-medium text-white"
+                style={{ background: "var(--ream-accent)" }}
+              >
+                Share{shares.length > 0 ? ` · ${shares.length}` : ""}
+              </button>
+            ) : (
+              <span className="text-xs" style={{ color: "var(--ream-ink-faint)" }}>
+                {access === "VIEW" ? "View only" : "Can edit"} · owned by {doc.ownerName}
+              </span>
+            )}
+          </div>
+
+          {canEdit && editor && (
+            <div className="flex flex-wrap items-center gap-0.5 py-2">
+              <ToolbarButton label="B" bold onClick={() => editor.chain().focus().toggleBold().run()} active={editor.isActive("bold")} />
+              <ToolbarButton label="I" italic onClick={() => editor.chain().focus().toggleItalic().run()} active={editor.isActive("italic")} />
+              <ToolbarButton label="U" underline onClick={() => editor.chain().focus().toggleUnderline().run()} active={editor.isActive("underline")} />
+              <ToolbarButton label="S" strike onClick={() => editor.chain().focus().toggleStrike().run()} active={editor.isActive("strike")} />
+              <Divider />
+              <select
+                value={currentHeadingLevel}
+                onChange={(e) => {
+                  const level = Number(e.target.value);
+                  if (level === 0) editor.chain().focus().setParagraph().run();
+                  else editor.chain().focus().toggleHeading({ level: level as 1 | 2 | 3 }).run();
+                }}
+                className="h-[30px] rounded-md border-0 px-2 text-[13px]"
+                style={{ background: "transparent" }}
+              >
+                {HEADING_OPTIONS.map((h) => (
+                  <option key={h.level} value={h.level}>
+                    {h.label}
+                  </option>
+                ))}
+              </select>
+              <Divider />
+              <ToolbarButton label="•" onClick={() => editor.chain().focus().toggleBulletList().run()} active={editor.isActive("bulletList")} />
+              <ToolbarButton label="1." onClick={() => editor.chain().focus().toggleOrderedList().run()} active={editor.isActive("orderedList")} />
+              <ToolbarButton label="❝" onClick={() => editor.chain().focus().toggleBlockquote().run()} active={editor.isActive("blockquote")} />
+              <Divider />
+              <button
+                type="button"
+                onClick={() => setImportOpen(true)}
+                className="flex h-[30px] items-center rounded-md px-2.5 text-[13px]"
+                style={{ color: "var(--ream-ink-soft)" }}
+              >
+                Insert file
+              </button>
+              <div className="flex-1" />
+              <div className="font-mono text-[10.5px]" style={{ color: "var(--ream-ink-faint)" }}>
+                Tiptap · ProseMirror JSON
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {!canEdit && (
+        <div className="mx-auto mt-4 w-full max-w-[760px] px-5">
+          <div className="flex items-center gap-3 rounded-[10px] border px-4 py-3.5" style={{ background: "var(--ream-surface)", borderColor: "var(--ream-border)" }}>
+            <div className="h-6 w-[6px] flex-none rounded-[3px]" style={{ background: "oklch(0.75 0.01 85)" }} />
+            <div className="flex-1">
+              <div className="text-sm font-medium">Read-only</div>
+              <div className="mt-0.5 text-[13px]" style={{ color: "var(--ream-ink-soft)" }}>
+                {doc.ownerName} shared this with view access. Ask them for edit access to make changes.
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setNotice("Ask the owner directly — in-app access requests aren't implemented in this build.")}
+              className="flex-none text-xs"
+              style={{ color: "var(--ream-accent)" }}
+            >
+              Request access
+            </button>
+          </div>
+        </div>
+      )}
+
+      {notice && (
+        <div className="mx-auto mt-4 w-full max-w-[760px] px-5">
+          <div className="flex items-center gap-3 rounded-[10px] border px-4 py-3" style={{ background: "var(--ream-warn-bg)", borderColor: "var(--ream-warn-border)" }}>
+            <div className="h-5 w-[6px] flex-none rounded-[3px]" style={{ background: "var(--ream-warn-dot)" }} />
+            <div className="flex-1 text-[13px]">{notice}</div>
+            <button type="button" onClick={() => setNotice(null)} className="text-xs font-medium" style={{ color: "var(--ream-ink-soft)" }}>
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-1 justify-center px-5 pb-24 pt-7">
+        <div className="w-full max-w-[760px]">
+          <div
+            className="rounded-[4px] border px-7 py-[60px] sm:px-[74px]"
+            style={{ background: "var(--ream-surface-solid)", borderColor: "var(--ream-border)", boxShadow: "0 1px 2px oklch(0.5 0.01 265 / 0.05), 0 10px 28px oklch(0.5 0.01 265 / 0.05)" }}
+          >
+            <EditorContent editor={editor} />
+          </div>
+        </div>
+      </div>
+
+      {shareOpen && (
+        <ShareModal docId={doc.id} docTitle={title} initialShares={shares} onClose={() => setShareOpen(false)} />
+      )}
+      {importOpen && <ImportModal onClose={() => setImportOpen(false)} />}
+    </div>
+  );
+}
+
+function Divider() {
+  return <div className="mx-2 h-5 w-px" style={{ background: "var(--ream-border)" }} />;
+}
+
+function ToolbarButton({
+  label,
+  onClick,
+  active,
+  bold,
+  italic,
+  underline,
+  strike,
+}: {
+  label: string;
+  onClick: () => void;
+  active?: boolean;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strike?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex h-[30px] w-[30px] items-center justify-center rounded-md text-sm"
+      style={{
+        background: active ? "var(--ream-accent-tint)" : "transparent",
+        color: active ? "var(--ream-accent-tint-ink)" : "var(--ream-ink)",
+        fontWeight: bold ? 700 : undefined,
+        fontStyle: italic ? "italic" : undefined,
+        fontFamily: italic ? "var(--font-doc)" : undefined,
+        textDecoration: underline ? "underline" : strike ? "line-through" : undefined,
+      }}
+    >
+      {label}
+    </button>
+  );
+}

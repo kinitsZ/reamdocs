@@ -1,0 +1,59 @@
+// Ream — Prisma schema
+// Pinned to Prisma 6.19.3 (see README/architecture note for why: Prisma 7 requires
+// ESM-only + driver adapters + a new prisma.config.ts; 8 is only a release candidate).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  VIEW
+  EDIT
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  initials  String
+  createdAt DateTime @default(now())
+
+  ownedDocuments Document[] @relation("OwnedDocuments")
+  shares         Share[]
+}
+
+model Document {
+  id        String   @id @default(cuid())
+  title     String
+  // Tiptap / ProseMirror JSON document. Stored as Json rather than raw HTML so the
+  // editor round-trips structure exactly (marks, node attrs) rather than re-parsing HTML.
+  content   Json
+  ownerId   String
+  owner     User     @relation("OwnedDocuments", fields: [ownerId], references: [id], onDelete: Cascade)
+  shares    Share[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId])
+}
+
+// One row per (document, user) grant. The owner is implicit via Document.ownerId and
+// never has a Share row of their own — Share only models *other* users' access.
+model Share {
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       Role
+  createdAt  DateTime @default(now())
+
+  @@unique([documentId, userId])
+  @@index([userId])
+}
