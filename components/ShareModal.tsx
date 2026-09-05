@@ -10,22 +10,39 @@ export interface ShareEntry {
   role: "VIEW" | "EDIT";
 }
 
+export interface AccessRequestEntry {
+  userId: string;
+  name: string;
+  email: string;
+  initials: string;
+}
+
 export function ShareModal({
   docId,
   docTitle,
-  initialShares,
+  shares,
+  onSharesChange,
+  accessRequests: requests,
+  onAccessRequestsChange: setRequests,
   onClose,
 }: {
   docId: string;
   docTitle: string;
-  initialShares: ShareEntry[];
+  shares: ShareEntry[];
+  onSharesChange: (updater: (prev: ShareEntry[]) => ShareEntry[]) => void;
+  accessRequests: AccessRequestEntry[];
+  onAccessRequestsChange: (updater: (prev: AccessRequestEntry[]) => AccessRequestEntry[]) => void;
   onClose: () => void;
 }) {
-  const [shares, setShares] = useState<ShareEntry[]>(initialShares);
+  // Controlled by the parent (Editor) rather than owning its own copy — the Share
+  // button's badge counts read the same state, so a grant/dismiss/add/remove here
+  // needs to be visible the moment the modal closes, not just after a reload.
+  const setShares = onSharesChange;
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"VIEW" | "EDIT">("EDIT");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
 
   async function addShare() {
     if (!email.trim()) return;
@@ -60,6 +77,27 @@ export function ShareModal({
   async function removeShare(userId: string) {
     setShares((prev) => prev.filter((s) => s.userId !== userId));
     await fetch(`/api/documents/${docId}/shares/${userId}`, { method: "DELETE" });
+  }
+
+  async function approveRequest(request: AccessRequestEntry) {
+    setResolvingId(request.userId);
+    try {
+      const res = await fetch(`/api/documents/${docId}/access-requests/${request.userId}`, { method: "POST" });
+      if (!res.ok) throw new Error();
+      setRequests((prev) => prev.filter((r) => r.userId !== request.userId));
+      setShares((prev) => [...prev.filter((s) => s.userId !== request.userId), { ...request, role: "EDIT" as const }]);
+    } catch {
+      setError("Couldn't approve that request — try again.");
+    } finally {
+      setResolvingId(null);
+    }
+  }
+
+  async function dismissRequest(userId: string) {
+    setResolvingId(userId);
+    setRequests((prev) => prev.filter((r) => r.userId !== userId));
+    await fetch(`/api/documents/${docId}/access-requests/${userId}`, { method: "DELETE" });
+    setResolvingId(null);
   }
 
   return (
@@ -100,8 +138,7 @@ export function ShareModal({
             type="button"
             disabled={busy || !email.trim()}
             onClick={addShare}
-            className="rounded-[8px] px-3 py-2 text-[13px] font-medium text-white disabled:opacity-50"
-            style={{ background: "var(--ream-accent)" }}
+            className="btn btn-primary rounded-[8px] px-3 py-2 text-[13px] font-medium disabled:opacity-50"
           >
             Add
           </button>
@@ -110,6 +147,51 @@ export function ShareModal({
         {error && (
           <div className="mx-[22px] mb-3 rounded-[8px] border px-3.5 py-2.5 text-[13px]" style={{ background: "var(--ream-error-bg)", borderColor: "var(--ream-error-border)", color: "var(--ream-error-ink)" }}>
             {error}
+          </div>
+        )}
+
+        {requests.length > 0 && (
+          <div className="px-[22px] pb-3">
+            <div className="mb-1.5 font-mono text-[10.5px] uppercase" style={{ letterSpacing: "0.07em", color: "var(--ream-amber)" }}>
+              Requesting edit access
+            </div>
+            <div className="flex flex-col gap-1.5">
+              {requests.map((r) => (
+                <div
+                  key={r.userId}
+                  className="flex items-center gap-[11px] rounded-[8px] border px-2.5 py-2"
+                  style={{ borderColor: "var(--ream-amber-border)", background: "var(--ream-amber-tint)" }}
+                >
+                  <div
+                    className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-full text-[11px] font-semibold"
+                    style={{ background: "var(--ream-surface-solid)", color: "var(--ream-amber-tint-ink)" }}
+                  >
+                    {r.initials}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[13px] font-medium">{r.name}</div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={resolvingId === r.userId}
+                    onClick={() => dismissRequest(r.userId)}
+                    className="btn btn-text text-xs disabled:opacity-60"
+                    style={{ color: "var(--ream-ink-soft)" }}
+                  >
+                    Dismiss
+                  </button>
+                  <button
+                    type="button"
+                    disabled={resolvingId === r.userId}
+                    onClick={() => approveRequest(r)}
+                    className="btn rounded-[6px] px-2.5 py-1 text-xs font-medium text-white disabled:opacity-60"
+                    style={{ background: "var(--ream-amber-tint-ink)" }}
+                  >
+                    {resolvingId === r.userId ? "…" : "Grant edit"}
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -146,7 +228,7 @@ export function ShareModal({
               <button
                 type="button"
                 onClick={() => removeShare(s.userId)}
-                className="text-xs"
+                className="btn btn-text text-xs"
                 style={{ color: "var(--ream-error-ink-soft)" }}
               >
                 Remove
@@ -157,7 +239,7 @@ export function ShareModal({
 
         <div className="mt-3 flex items-center gap-2.5 border-t px-[22px] py-3.5" style={{ background: "var(--ream-bg)", borderColor: "var(--ream-border-soft)" }}>
           <div className="flex-1 font-mono text-[11px]" style={{ color: "var(--ream-ink-soft)" }}>No link sharing in this build</div>
-          <button type="button" onClick={onClose} className="rounded-[8px] px-4 py-2 text-[13px] font-medium text-white" style={{ background: "var(--ream-accent)" }}>
+          <button type="button" onClick={onClose} className="btn btn-primary rounded-[8px] px-4 py-2 text-[13px] font-medium">
             Done
           </button>
         </div>

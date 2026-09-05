@@ -69,7 +69,16 @@ in this build session so it should be accurate, but it's written on your behalf.
   mode is exactly the expected network error rather than an application bug —
   distinguishing "my code is wrong" from "this network blocks port 5432" before
   concluding either way.
-- _(Add: what you personally clicked through once the DB was reachable —
-  creating a doc, importing a file, sharing between two seeded accounts,
-  confirming the read-only banner as the viewer account. This is the part only
-  you can attest to.)_
+- **A real gap this surfaced**: the access-request feature was verified end-to-end
+  via `curl` against every API route (create → owner sees it → non-owner blocked
+  from resolving it → dismiss leaves the role untouched → approve upgrades it),
+  and all of it passed. It still shipped with a bug — the Share button's request
+  badge didn't clear until a page reload — because that was a pure client-side
+  state bug (the modal held its own copy of the list, disconnected from the
+  badge's data source) that API-level testing structurally cannot catch. Found by
+  clicking through the actual UI, not by more curl calls. Kept in as a concrete
+  example of where AI-only verification stops and a human driving the app
+  actually matters.
+- _(Add: what else you personally clicked through — creating a doc, importing a
+  file, sharing between two seeded accounts, confirming the read-only banner as
+  the viewer account. This is the part only you can attest to.)_

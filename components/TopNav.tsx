@@ -16,7 +16,7 @@ export function TopNav({ user }: Props) {
         <Logo />
       </Link>
       <div className="flex-1" />
-      <Link href="/documents" className="text-[13px] no-underline" style={{ color: "var(--ream-ink-soft)" }}>
+      <Link href="/documents" className="nav-link text-[13px] no-underline" style={{ color: "var(--ream-ink-soft)" }}>
         Documents
       </Link>
       <div

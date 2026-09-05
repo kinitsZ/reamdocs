@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import Placeholder from "@tiptap/extension-placeholder";
 import { tiptapExtensions } from "@/lib/tiptap-extensions";
 import { relativeTime } from "@/lib/relative-time";
-import { ShareModal, type ShareEntry } from "./ShareModal";
+import { ShareModal, type ShareEntry, type AccessRequestEntry } from "./ShareModal";
 import { ImportModal } from "./ImportModal";
 
 type Access = "OWNER" | "EDIT" | "VIEW";
@@ -21,12 +22,18 @@ const HEADING_OPTIONS = [
 export function Editor({
   doc,
   access,
-  shares,
+  shares: initialShares,
+  accessRequests: initialAccessRequests,
+  hasPendingRequest,
 }: {
   doc: { id: string; title: string; content: JSONContent; ownerName: string };
   access: Access;
   shares: ShareEntry[];
+  accessRequests: AccessRequestEntry[];
+  hasPendingRequest: boolean;
 }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const canEdit = access === "OWNER" || access === "EDIT";
   const isOwner = access === "OWNER";
 
@@ -34,9 +41,27 @@ export function Editor({
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [shareOpen, setShareOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(() => searchParams.get("share") === "1");
   const [importOpen, setImportOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [requestSent, setRequestSent] = useState(hasPendingRequest);
+  const [requestingAccess, setRequestingAccess] = useState(false);
   const [, forceTick] = useState(0);
+
+  // Owned here (not by ShareModal) so the Share button's badge counts update the
+  // instant something resolves inside the modal, not just after a page reload.
+  const [shares, setShares] = useState<ShareEntry[]>(initialShares);
+  const [accessRequests, setAccessRequests] = useState<AccessRequestEntry[]>(initialAccessRequests);
+
+  // Support deep-linking straight into "Share" (used by the document list's ⋯ menu)
+  // via ?share=1, then drop the param so a refresh doesn't reopen the modal.
+  useEffect(() => {
+    if (searchParams.get("share") === "1") {
+      router.replace(`/documents/${doc.id}`, { scroll: false });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const pendingContent = useRef<JSONContent | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -120,6 +145,33 @@ export function Editor({
     if (pendingContent.current) saveContent(pendingContent.current);
   }
 
+  async function requestAccess() {
+    setRequestingAccess(true);
+    try {
+      const res = await fetch(`/api/documents/${doc.id}/access-requests`, { method: "POST" });
+      if (!res.ok) throw new Error();
+      setRequestSent(true);
+    } catch {
+      setNotice("Couldn't send the request — try again.");
+    } finally {
+      setRequestingAccess(false);
+    }
+  }
+
+  async function deleteDocument() {
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/documents/${doc.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      router.push("/documents");
+      router.refresh();
+    } catch {
+      setDeleting(false);
+      setConfirmDelete(false);
+      setNotice("Couldn't delete the document — try again.");
+    }
+  }
+
   const saveLabel =
     saveState === "saving"
       ? "Saving…"
@@ -164,7 +216,7 @@ export function Editor({
               <button
                 type="button"
                 onClick={saveState === "error" ? retrySave : undefined}
-                className="font-mono text-[11px]"
+                className={`btn font-mono text-[11px] ${saveState === "error" ? "btn-text" : ""}`}
                 style={{ color: saveState === "error" ? "var(--ream-error-ink)" : "var(--ream-ink-faint)", cursor: saveState === "error" ? "pointer" : "default" }}
               >
                 {saveLabel}
@@ -172,14 +224,38 @@ export function Editor({
               </button>
             )}
             <div className="flex-1" />
+
+            {isOwner && confirmDelete ? (
+              <div className="flex items-center gap-2 rounded-[8px] border px-2.5 py-1.5" style={{ borderColor: "var(--ream-error-border)", background: "var(--ream-error-bg)" }}>
+                <span className="text-xs" style={{ color: "var(--ream-error-ink)" }}>Delete this document?</span>
+                <button type="button" disabled={deleting} onClick={() => setConfirmDelete(false)} className="btn btn-text text-xs font-medium disabled:opacity-60">
+                  Cancel
+                </button>
+                <button type="button" disabled={deleting} onClick={deleteDocument} className="btn btn-text text-xs font-medium disabled:opacity-60" style={{ color: "var(--ream-error-ink)" }}>
+                  {deleting ? "Deleting…" : "Yes, delete"}
+                </button>
+              </div>
+            ) : isOwner ? (
+              <button type="button" onClick={() => setConfirmDelete(true)} className="btn btn-text text-xs" style={{ color: "var(--ream-ink-faint)" }}>
+                Delete
+              </button>
+            ) : null}
+
             {isOwner ? (
               <button
                 type="button"
                 onClick={() => setShareOpen(true)}
-                className="rounded-[8px] px-4 py-2 text-[13px] font-medium text-white"
-                style={{ background: "var(--ream-accent)" }}
+                className="btn btn-primary relative rounded-[8px] px-4 py-2 text-[13px] font-medium"
               >
                 Share{shares.length > 0 ? ` · ${shares.length}` : ""}
+                {accessRequests.length > 0 && (
+                  <span
+                    className="absolute -right-1.5 -top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-semibold text-white"
+                    style={{ background: "var(--ream-amber)" }}
+                  >
+                    {accessRequests.length}
+                  </span>
+                )}
               </button>
             ) : (
               <span className="text-xs" style={{ color: "var(--ream-ink-faint)" }}>
@@ -202,7 +278,7 @@ export function Editor({
                   if (level === 0) editor.chain().focus().setParagraph().run();
                   else editor.chain().focus().toggleHeading({ level: level as 1 | 2 | 3 }).run();
                 }}
-                className="h-[30px] rounded-md border-0 px-2 text-[13px]"
+                className="h-[30px] cursor-pointer rounded-md border-0 px-2 text-[13px]"
                 style={{ background: "transparent" }}
               >
                 {HEADING_OPTIONS.map((h) => (
@@ -219,7 +295,7 @@ export function Editor({
               <button
                 type="button"
                 onClick={() => setImportOpen(true)}
-                className="flex h-[30px] items-center rounded-md px-2.5 text-[13px]"
+                className="btn btn-ghost flex h-[30px] items-center rounded-md px-2.5 text-[13px]"
                 style={{ color: "var(--ream-ink-soft)" }}
               >
                 Insert file
@@ -243,14 +319,21 @@ export function Editor({
                 {doc.ownerName} shared this with view access. Ask them for edit access to make changes.
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => setNotice("Ask the owner directly — in-app access requests aren't implemented in this build.")}
-              className="flex-none text-xs"
-              style={{ color: "var(--ream-accent)" }}
-            >
-              Request access
-            </button>
+            {requestSent ? (
+              <span className="flex-none text-xs" style={{ color: "var(--ream-ink-faint)" }}>
+                Request sent ✓
+              </span>
+            ) : (
+              <button
+                type="button"
+                disabled={requestingAccess}
+                onClick={requestAccess}
+                className="btn btn-text flex-none text-xs disabled:opacity-60"
+                style={{ color: "var(--ream-accent)" }}
+              >
+                {requestingAccess ? "Sending…" : "Request access"}
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -260,7 +343,7 @@ export function Editor({
           <div className="flex items-center gap-3 rounded-[10px] border px-4 py-3" style={{ background: "var(--ream-warn-bg)", borderColor: "var(--ream-warn-border)" }}>
             <div className="h-5 w-[6px] flex-none rounded-[3px]" style={{ background: "var(--ream-warn-dot)" }} />
             <div className="flex-1 text-[13px]">{notice}</div>
-            <button type="button" onClick={() => setNotice(null)} className="text-xs font-medium" style={{ color: "var(--ream-ink-soft)" }}>
+            <button type="button" onClick={() => setNotice(null)} className="btn btn-text text-xs font-medium" style={{ color: "var(--ream-ink-soft)" }}>
               Dismiss
             </button>
           </div>
@@ -279,7 +362,15 @@ export function Editor({
       </div>
 
       {shareOpen && (
-        <ShareModal docId={doc.id} docTitle={title} initialShares={shares} onClose={() => setShareOpen(false)} />
+        <ShareModal
+          docId={doc.id}
+          docTitle={title}
+          shares={shares}
+          onSharesChange={setShares}
+          accessRequests={accessRequests}
+          onAccessRequestsChange={setAccessRequests}
+          onClose={() => setShareOpen(false)}
+        />
       )}
       {importOpen && <ImportModal onClose={() => setImportOpen(false)} />}
     </div>
@@ -311,7 +402,7 @@ function ToolbarButton({
     <button
       type="button"
       onClick={onClick}
-      className="flex h-[30px] w-[30px] items-center justify-center rounded-md text-sm"
+      className={`btn flex h-[30px] w-[30px] items-center justify-center rounded-md text-sm ${active ? "btn-ghost-accent" : "btn-ghost"}`}
       style={{
         background: active ? "var(--ream-accent-tint)" : "transparent",
         color: active ? "var(--ream-accent-tint-ink)" : "var(--ream-ink)",

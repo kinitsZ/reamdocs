@@ -5,6 +5,40 @@ import { useRouter } from "next/navigation";
 import type { OwnedDocSummary, SharedDocSummary } from "@/lib/documents";
 import { relativeTime } from "@/lib/relative-time";
 import { ImportModal } from "./ImportModal";
+import { DocumentMenu } from "./DocumentMenu";
+
+/** Clickable card/row that also hosts a nested ⋯ menu — a real <button> can't
+ * legally contain other interactive elements (links, buttons), so this is a div
+ * with button semantics instead, with click-to-navigate and full keyboard support. */
+function ClickableRow({
+  onOpen,
+  className,
+  style,
+  children,
+}: {
+  onOpen: () => void;
+  className: string;
+  style?: React.CSSProperties;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      className={className}
+      style={style}
+    >
+      {children}
+    </div>
+  );
+}
 
 type View = "grid" | "table";
 
@@ -45,7 +79,7 @@ export function DocumentList({ owned, shared }: { owned: OwnedDocSummary[]; shar
               <button
                 type="button"
                 onClick={() => setView("grid")}
-                className="rounded-[6px] px-3 py-1.5 text-xs font-medium"
+                className={`btn rounded-[6px] px-3 py-1.5 text-xs font-medium ${view === "grid" ? "" : "btn-ghost"}`}
                 style={view === "grid" ? { background: "var(--ream-surface)", color: "var(--ream-ink)" } : { color: "var(--ream-ink-soft)" }}
               >
                 Grid
@@ -53,7 +87,7 @@ export function DocumentList({ owned, shared }: { owned: OwnedDocSummary[]; shar
               <button
                 type="button"
                 onClick={() => setView("table")}
-                className="rounded-[6px] px-3 py-1.5 text-xs font-medium"
+                className={`btn rounded-[6px] px-3 py-1.5 text-xs font-medium ${view === "table" ? "" : "btn-ghost"}`}
                 style={view === "table" ? { background: "var(--ream-surface)", color: "var(--ream-ink)" } : { color: "var(--ream-ink-soft)" }}
               >
                 Table
@@ -62,8 +96,7 @@ export function DocumentList({ owned, shared }: { owned: OwnedDocSummary[]; shar
             <button
               type="button"
               onClick={() => setImportOpen(true)}
-              className="rounded-[8px] border px-3.5 py-2 text-[13px] font-medium"
-              style={{ borderColor: "var(--ream-border)", background: "var(--ream-surface)" }}
+              className="btn btn-outline rounded-[8px] px-3.5 py-2 text-[13px] font-medium"
             >
               Import file
             </button>
@@ -71,8 +104,7 @@ export function DocumentList({ owned, shared }: { owned: OwnedDocSummary[]; shar
               type="button"
               disabled={creating}
               onClick={createDocument}
-              className="rounded-[8px] px-4 py-2 text-[13px] font-medium text-white disabled:opacity-60"
-              style={{ background: "var(--ream-accent)" }}
+              className="btn btn-primary rounded-[8px] px-4 py-2 text-[13px] font-medium disabled:opacity-60"
             >
               {creating ? "Creating…" : "New document"}
             </button>
@@ -117,23 +149,37 @@ function SectionLabel({ children, color }: { children: React.ReactNode; color: s
   );
 }
 
+function RequestBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <span
+      className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold text-white"
+      style={{ background: "var(--ream-amber)" }}
+    >
+      {count} request{count > 1 ? "s" : ""}
+    </span>
+  );
+}
+
 function GridView({ docs }: { docs: OwnedDocSummary[] }) {
   const router = useRouter();
   return (
     <div className="mb-8 grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}>
       {docs.map((d) => (
-        <button
+        <ClickableRow
           key={d.id}
-          type="button"
-          onClick={() => router.push(`/documents/${d.id}`)}
-          className="overflow-hidden rounded-[10px] border text-left"
+          onOpen={() => router.push(`/documents/${d.id}`)}
+          className="btn card-hover relative overflow-hidden rounded-[10px] border text-left"
           style={{ borderColor: "var(--ream-border)", background: "var(--ream-surface)" }}
         >
+          <div className="absolute right-1.5 top-1.5 z-10">
+            <DocumentMenu docId={d.id} />
+          </div>
           <div
             className="h-[132px] overflow-hidden border-b px-4 pt-4"
             style={{ background: "var(--ream-surface-solid)", borderColor: "var(--ream-border-soft)" }}
           >
-            <div className="mb-1.5 truncate text-xs font-semibold" style={{ fontFamily: "var(--font-doc)", color: "oklch(0.3 0.015 265)" }}>
+            <div className="mb-1.5 truncate pr-7 text-xs font-semibold" style={{ fontFamily: "var(--font-doc)", color: "oklch(0.3 0.015 265)" }}>
               {d.title}
             </div>
             <div className="line-clamp-5 text-[10px] leading-[1.6]" style={{ color: "var(--ream-ink-faint)" }}>
@@ -142,12 +188,15 @@ function GridView({ docs }: { docs: OwnedDocSummary[] }) {
           </div>
           <div className="px-3.5 py-2.5">
             <div className="truncate text-[13px] font-medium">{d.title}</div>
-            <div className="mt-0.5 flex justify-between gap-2 text-[11.5px]" style={{ color: "var(--ream-ink-faint)" }}>
+            <div className="mt-0.5 flex items-center justify-between gap-2 text-[11.5px]" style={{ color: "var(--ream-ink-faint)" }}>
               <span>{relativeTime(d.updatedAt)}</span>
-              <span>{d.shareCount > 0 ? `Shared · ${d.shareCount}` : "Private"}</span>
+              <span className="flex items-center gap-1.5">
+                <RequestBadge count={d.pendingRequestCount} />
+                {d.shareCount > 0 ? `Shared · ${d.shareCount}` : "Private"}
+              </span>
             </div>
           </div>
-        </button>
+        </ClickableRow>
       ))}
     </div>
   );
@@ -155,23 +204,24 @@ function GridView({ docs }: { docs: OwnedDocSummary[] }) {
 
 function TableView({ docs }: { docs: OwnedDocSummary[] }) {
   const router = useRouter();
+  const columns = "minmax(0,1fr) 130px 140px 32px";
   return (
     <div className="mb-8 overflow-hidden rounded-xl border" style={{ borderColor: "var(--ream-border)", background: "var(--ream-surface)" }}>
       <div
         className="grid gap-4 px-[18px] py-2.5 font-mono text-[10.5px] uppercase"
-        style={{ gridTemplateColumns: "minmax(0,1fr) 130px 120px", letterSpacing: "0.07em", color: "var(--ream-ink-faint)", background: "oklch(0.975 0.006 85)" }}
+        style={{ gridTemplateColumns: columns, letterSpacing: "0.07em", color: "var(--ream-ink-faint)", background: "oklch(0.975 0.006 85)" }}
       >
         <div>Name</div>
         <div>Last edited</div>
         <div className="text-right">Access</div>
+        <div />
       </div>
       {docs.map((d) => (
-        <button
+        <ClickableRow
           key={d.id}
-          type="button"
-          onClick={() => router.push(`/documents/${d.id}`)}
-          className="grid w-full items-center gap-4 border-t px-[18px] py-3 text-left"
-          style={{ gridTemplateColumns: "minmax(0,1fr) 130px 120px", borderColor: "var(--ream-border-soft)" }}
+          onOpen={() => router.push(`/documents/${d.id}`)}
+          className="btn row-hover grid w-full items-center gap-4 border-t px-[18px] py-3 text-left"
+          style={{ gridTemplateColumns: columns, borderColor: "var(--ream-border-soft)" }}
         >
           <div className="flex min-w-0 items-center gap-3">
             <div className="h-[30px] w-6 flex-none rounded-[3px] border" style={{ background: "var(--ream-accent-tint)", borderColor: "oklch(0.86 0.03 250)" }} />
@@ -181,10 +231,14 @@ function TableView({ docs }: { docs: OwnedDocSummary[] }) {
             </div>
           </div>
           <div className="text-xs" style={{ color: "var(--ream-ink-soft)" }}>{relativeTime(d.updatedAt)}</div>
-          <div className="text-right text-xs" style={{ color: "var(--ream-ink-soft)" }}>
+          <div className="flex items-center justify-end gap-1.5 text-right text-xs" style={{ color: "var(--ream-ink-soft)" }}>
+            <RequestBadge count={d.pendingRequestCount} />
             {d.shareCount > 0 ? `Shared · ${d.shareCount}` : "Private"}
           </div>
-        </button>
+          <div className="flex justify-end">
+            <DocumentMenu docId={d.id} />
+          </div>
+        </ClickableRow>
       ))}
     </div>
   );
@@ -199,7 +253,7 @@ function SharedTable({ docs }: { docs: SharedDocSummary[] }) {
           key={d.id}
           type="button"
           onClick={() => router.push(`/documents/${d.id}`)}
-          className="grid w-full items-center gap-4 px-[18px] py-3 text-left"
+          className="btn row-hover-amber grid w-full items-center gap-4 px-[18px] py-3 text-left"
           style={{
             gridTemplateColumns: "minmax(0,1fr) 130px 120px",
             borderTop: i === 0 ? undefined : "1px solid oklch(0.955 0.012 60)",
@@ -236,10 +290,10 @@ function EmptyDocuments({ onNew, onImport, creating }: { onNew: () => void; onIm
         Start a blank document, or bring one you already wrote — .txt, .md and .docx come in as editable content, not attachments.
       </div>
       <div className="flex flex-wrap justify-center gap-2">
-        <button type="button" disabled={creating} onClick={onNew} className="rounded-[8px] px-4 py-2 text-[13px] font-medium text-white disabled:opacity-60" style={{ background: "var(--ream-accent)" }}>
+        <button type="button" disabled={creating} onClick={onNew} className="btn btn-primary rounded-[8px] px-4 py-2 text-[13px] font-medium disabled:opacity-60">
           New document
         </button>
-        <button type="button" onClick={onImport} className="rounded-[8px] border px-4 py-2 text-[13px] font-medium" style={{ borderColor: "var(--ream-border)", background: "var(--ream-surface-solid)" }}>
+        <button type="button" onClick={onImport} className="btn btn-outline rounded-[8px] px-4 py-2 text-[13px] font-medium">
           Import a file
         </button>
       </div>
@@ -251,10 +305,10 @@ function MiniPrompt({ onNew, onImport, creating }: { onNew: () => void; onImport
   return (
     <div className="mb-8 flex flex-wrap items-center gap-3 rounded-xl border px-5 py-4" style={{ borderColor: "var(--ream-border)", background: "var(--ream-surface)" }}>
       <div className="flex-1 text-sm" style={{ color: "var(--ream-ink-soft)" }}>You don&apos;t own any documents yet.</div>
-      <button type="button" disabled={creating} onClick={onNew} className="rounded-[8px] px-3.5 py-1.5 text-[13px] font-medium text-white disabled:opacity-60" style={{ background: "var(--ream-accent)" }}>
+      <button type="button" disabled={creating} onClick={onNew} className="btn btn-primary rounded-[8px] px-3.5 py-1.5 text-[13px] font-medium disabled:opacity-60">
         New document
       </button>
-      <button type="button" onClick={onImport} className="rounded-[8px] border px-3.5 py-1.5 text-[13px] font-medium" style={{ borderColor: "var(--ream-border)", background: "var(--ream-surface-solid)" }}>
+      <button type="button" onClick={onImport} className="btn btn-outline rounded-[8px] px-3.5 py-1.5 text-[13px] font-medium">
         Import a file
       </button>
     </div>

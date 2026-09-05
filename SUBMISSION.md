@@ -4,8 +4,8 @@ _Fill in the blanks below before zipping/uploading to Drive._
 
 ## Links
 
-- **Live app**: `<Vercel URL>`
-- **Repo**: `<GitHub URL>` (or included as source in this Drive folder)
+- **Live app**: https://reamdocs.vercel.app
+- **Repo**: https://github.com/kinitsZ/reamdocs
 - **Walkthrough video** (3–5 min, unlisted): `<Loom/YouTube URL>` — also saved as
   a plain text file per the assignment's deliverable list.
 
@@ -31,8 +31,9 @@ _Fill in the blanks below before zipping/uploading to Drive._
 
 ### Working end to end
 - Sign in as any seeded user (mocked, cookie-based, no password)
-- Create / rename / edit a document with Tiptap (bold, italic, underline,
+- Create / rename / edit / delete a document with Tiptap (bold, italic, underline,
   strikethrough, H1–H3, bullet/numbered lists, blockquote); autosave; survives refresh
+  (delete is owner-only, server-enforced, with an inline confirm)
 - Import `.txt` / `.md` / `.docx` as a new document (5 MB cap, validated
   client + server side, clear error copy on rejection)
 - Share a document with another seeded user by email at View or Edit access;
@@ -41,6 +42,10 @@ _Fill in the blanks below before zipping/uploading to Drive._
 - Server-side enforcement of access (a viewer's `PATCH` request is rejected
   even if they bypass the UI)
 - Read-only editor experience for view-only access, with an explicit banner
+- Request access: a view-only user can request edit access; the owner sees it as
+  an on-site badge on the document + a Grant/Dismiss panel in Share — a real,
+  working flow, not the inert placeholder from the original design mockup
+- Quick actions (⋯) menu per document in the list: Open / Share / Delete
 - Real empty states (no documents yet / nothing shared with you) and real
   error states (bad file type, oversized file, unknown share email, failed
   autosave with retry)
@@ -49,7 +54,8 @@ _Fill in the blanks below before zipping/uploading to Drive._
 - No real-time collaboration or live presence (see ARCHITECTURE.md)
 - No version history, comments, or link sharing (out of scope per the brief)
 - No "insert file into an existing draft" — import always creates a new document
-- "Request access" on the read-only banner is an honest no-op (no notification system)
+- Request access is on-site only (no email/push notification if the owner isn't
+  currently looking at the app)
 - One automated test suite (Vitest, unit-level on access control + validation) —
   no e2e coverage yet
 

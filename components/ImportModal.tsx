@@ -57,7 +57,7 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
-            className="w-full cursor-pointer rounded-[10px] border border-dashed px-5 py-[34px] text-center"
+            className="btn import-drop w-full rounded-[10px] border border-dashed px-5 py-[34px] text-center"
             style={{ borderColor: "var(--ream-border)", background: "var(--ream-surface)" }}
           >
             <div
@@ -96,8 +96,7 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
           <button
             type="button"
             onClick={onClose}
-            className="rounded-[8px] border px-3.5 py-2 text-[13px]"
-            style={{ borderColor: "var(--ream-border)", background: "var(--ream-surface-solid)" }}
+            className="btn btn-outline rounded-[8px] px-3.5 py-2 text-[13px]"
           >
             Cancel
           </button>
@@ -105,8 +104,7 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
             type="button"
             disabled={!file || busy}
             onClick={submit}
-            className="rounded-[8px] px-4 py-2 text-[13px] font-medium text-white disabled:opacity-50"
-            style={{ background: "var(--ream-accent)" }}
+            className="btn btn-primary rounded-[8px] px-4 py-2 text-[13px] font-medium disabled:opacity-50"
           >
             {busy ? "Importing…" : "Create document"}
           </button>

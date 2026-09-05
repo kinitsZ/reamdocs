@@ -7,6 +7,7 @@ export interface OwnedDocSummary {
   excerpt: string;
   updatedAt: Date;
   shareCount: number;
+  pendingRequestCount: number;
 }
 
 export interface SharedDocSummary {
@@ -25,7 +26,7 @@ export async function listDocumentsForUser(
   const [owned, sharedWithMe] = await Promise.all([
     prisma.document.findMany({
       where: { ownerId: userId },
-      include: { shares: true },
+      include: { shares: true, accessRequests: true },
       orderBy: { updatedAt: "desc" },
     }),
     prisma.document.findMany({
@@ -42,6 +43,7 @@ export async function listDocumentsForUser(
       excerpt: extractPlainText(d.content),
       updatedAt: d.updatedAt,
       shareCount: d.shares.length,
+      pendingRequestCount: d.accessRequests.length,
     })),
     shared: sharedWithMe.map((d) => ({
       id: d.id,

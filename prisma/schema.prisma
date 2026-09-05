@@ -3,7 +3,11 @@
 // ESM-only + driver adapters + a new prisma.config.ts; 8 is only a release candidate).
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // "native" covers local dev; the rest cover Vercel's build vs. serverless
+  // runtime machines, which can differ in glibc version — a common source of
+  // "Prisma Client could not locate the Query Engine" failures in production.
+  binaryTargets = ["native", "rhel-openssl-3.0.x", "debian-openssl-3.0.x"]
 }
 
 datasource db {
@@ -24,8 +28,9 @@ model User {
   initials  String
   createdAt DateTime @default(now())
 
-  ownedDocuments Document[] @relation("OwnedDocuments")
+  ownedDocuments Document[]     @relation("OwnedDocuments")
   shares         Share[]
+  accessRequests AccessRequest[]
 }
 
 model Document {
@@ -37,10 +42,27 @@ model Document {
   ownerId   String
   owner     User     @relation("OwnedDocuments", fields: [ownerId], references: [id], onDelete: Cascade)
   shares    Share[]
+  accessRequests AccessRequest[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([ownerId])
+}
+
+// A view-only user asking the owner to upgrade them to edit access. Deliberately
+// minimal — no message body, no notification email — surfaced on-site as a badge
+// in the document list and a section in the Share dialog. Resolving one (approve
+// or dismiss) deletes the row; there's no need to keep a history of past requests.
+model AccessRequest {
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([documentId, userId])
+  @@index([documentId])
 }
 
 // One row per (document, user) grant. The owner is implicit via Document.ownerId and

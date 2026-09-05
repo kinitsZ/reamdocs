@@ -12,13 +12,18 @@ export default async function DocumentPage({ params }: PageProps<"/documents/[id
   const { id } = await params;
   const doc = await prisma.document.findUnique({
     where: { id },
-    include: { owner: true, shares: { include: { user: true } } },
+    include: {
+      owner: true,
+      shares: { include: { user: true } },
+      accessRequests: { include: { user: true } },
+    },
   });
 
   if (!doc) notFound();
   if (!canView(doc, userId)) notFound(); // don't reveal that a document exists to someone with no access
 
   const access = getAccessLevel(doc, userId)!;
+  const isOwner = access === "OWNER";
 
   return (
     <Editor
@@ -36,6 +41,17 @@ export default async function DocumentPage({ params }: PageProps<"/documents/[id
         initials: s.user.initials,
         role: s.role,
       }))}
+      accessRequests={
+        isOwner
+          ? doc.accessRequests.map((r) => ({
+              userId: r.userId,
+              name: r.user.name,
+              email: r.user.email,
+              initials: r.user.initials,
+            }))
+          : []
+      }
+      hasPendingRequest={!isOwner && doc.accessRequests.some((r) => r.userId === userId)}
     />
   );
 }

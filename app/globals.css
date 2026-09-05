@@ -63,6 +63,95 @@ a:hover {
   outline: none;
 }
 
+/* Browsers default <button> to cursor: default (only <a> gets a pointer for free) —
+   every clickable button in this app should look clickable. */
+button:not(:disabled) {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+}
+
+/* Reusable button "kinds" with real hover/active/focus feedback — inline `style`
+   can't express :hover, so anything interactive should reach for one of these
+   instead of hand-rolling colors again. */
+.btn {
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease, transform 80ms ease;
+}
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.btn:focus-visible {
+  outline: 2px solid var(--ream-accent);
+  outline-offset: 2px;
+}
+
+.btn-primary {
+  background: var(--ream-accent);
+  color: white;
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--ream-accent-hover);
+}
+
+.btn-outline {
+  background: var(--ream-surface-solid);
+  border: 1px solid var(--ream-border);
+  color: var(--ream-ink);
+}
+.btn-outline:hover:not(:disabled) {
+  border-color: oklch(0.7 0.01 85);
+  background: var(--ream-surface);
+}
+
+/* Transparent-until-hovered — toolbar icon buttons, chip toggles, header links. */
+.btn-ghost {
+  background: transparent;
+}
+.btn-ghost:hover:not(:disabled) {
+  background: var(--ream-border-soft);
+}
+
+.btn-ghost-accent:hover:not(:disabled) {
+  background: var(--ream-accent-tint);
+}
+
+/* Text-only actions (Remove, Dismiss, Insert into doc, Retry…). */
+.btn-text {
+  background: transparent;
+  text-underline-offset: 2px;
+}
+.btn-text:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+/* Whole-row/card buttons in the document list. */
+.row-hover:hover:not(:disabled) {
+  background: var(--ream-border-soft);
+}
+.row-hover-amber:hover:not(:disabled) {
+  background: oklch(0.982 0.014 70);
+}
+.card-hover:hover:not(:disabled) {
+  border-color: oklch(0.68 0.06 250);
+  box-shadow: 0 6px 18px oklch(0.5 0.01 265 / 0.07);
+}
+.login-account:hover:not(:disabled) {
+  border-color: var(--ream-accent);
+  background: var(--ream-surface-solid);
+}
+.import-drop:hover:not(:disabled) {
+  border-color: var(--ream-accent);
+  background: oklch(0.98 0.012 250);
+}
+
+.nav-link {
+  transition: color 120ms ease;
+}
+.nav-link:hover {
+  color: var(--ream-ink) !important;
+}
+
 ::selection {
   background: var(--ream-accent-tint);
 }
@@ -97,6 +186,12 @@ a:hover {
   font-weight: 600;
   letter-spacing: -0.01em;
   margin: 30px 0 10px;
+}
+.ream-prose h3 {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  margin: 24px 0 8px;
 }
 .ream-prose p {
   font-size: 17px;

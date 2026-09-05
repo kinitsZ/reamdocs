@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUserId } from "@/lib/auth";
-import { canEdit, canView, getAccessLevel } from "@/lib/access";
+import { canEdit, canView, getAccessLevel, isOwner } from "@/lib/access";
 import { updateDocumentSchema } from "@/lib/validation";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -74,4 +74,22 @@ export async function PATCH(request: Request, { params }: RouteContext) {
   });
 
   return NextResponse.json({ document: { id: updated.id, title: updated.title, updatedAt: updated.updatedAt } });
+}
+
+export async function DELETE(_request: Request, { params }: RouteContext) {
+  const userId = await getSessionUserId();
+  if (!userId) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+
+  const { id } = await params;
+  const doc = await prisma.document.findUnique({ where: { id } });
+  if (!doc) return NextResponse.json({ error: "Document not found." }, { status: 404 });
+
+  // Only the owner can delete — an editor could otherwise destroy a document they
+  // don't own, which is a much bigger privilege than "can edit content."
+  if (!isOwner(doc, userId)) {
+    return NextResponse.json({ error: "Only the owner can delete this document." }, { status: 403 });
+  }
+
+  await prisma.document.delete({ where: { id } }); // cascades to its Share rows
+  return NextResponse.json({ ok: true });
 }

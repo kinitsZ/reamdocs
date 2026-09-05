@@ -45,7 +45,7 @@ export function LoginPicker({ users }: { users: SeedUser[] }) {
           type="button"
           disabled={pendingId !== null}
           onClick={() => signIn(u.id)}
-          className="flex items-center gap-3 rounded-[10px] border px-4 py-3.5 text-left transition-colors disabled:cursor-wait disabled:opacity-60"
+          className="btn login-account flex items-center gap-3 rounded-[10px] border px-4 py-3.5 text-left disabled:cursor-wait disabled:opacity-60"
           style={{
             background: "var(--ream-surface)",
             borderColor: "var(--ream-border)",

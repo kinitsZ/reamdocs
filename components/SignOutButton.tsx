@@ -19,7 +19,7 @@ export function SignOutButton() {
       type="button"
       onClick={signOut}
       disabled={pending}
-      className="text-xs disabled:opacity-60"
+      className="btn btn-text text-xs disabled:opacity-60"
       style={{ color: "var(--ream-ink-faint)" }}
     >
       {pending ? "Signing out…" : "Sign out"}

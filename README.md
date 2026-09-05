@@ -5,7 +5,7 @@ A small Google-Docs-inspired editor: create/rename/edit rich-text documents, imp
 users at View or Edit access. Built on Next.js App Router (API routes for the
 backend), Prisma + Postgres (via Supabase), and Tiptap for the editor.
 
-**Live app:** _TODO: paste Vercel URL here after deploy_
+**Live app:** https://reamdocs.vercel.app
 **Seeded test accounts** (pick one from the sign-in screen, no password):
 | Email | Suggested role to test |
 |---|---|
@@ -15,11 +15,13 @@ backend), Prisma + Postgres (via Supabase), and Tiptap for the editor.
 
 ## Features
 
-- **Documents**: create, rename (click the title in the editor), edit, autosave (debounced, ~800ms after you stop typing), reopen after refresh.
+- **Documents**: create, rename (click the title in the editor), edit, autosave (debounced, ~800ms after you stop typing), reopen after refresh, delete (owner-only, with an inline confirm rather than a silent one-way action).
 - **Rich text** (Tiptap): bold, italic, underline, strikethrough, headings (H1–H3), bullet/numbered lists, blockquote.
 - **Import**: upload a `.txt`, `.md`, or `.docx` file (5 MB max) and it becomes a new document you own, converted into the same node/mark set the editor renders (`.docx` via `mammoth` → HTML → Tiptap JSON; `.md` via `marked` → HTML → Tiptap JSON; `.txt` mapped to paragraphs directly). Unsupported types and oversized files are rejected with a clear message, both client- and server-side.
 - **Sharing**: the owner can grant another seeded user View or Edit access by email, change or revoke it later. Owned and shared-with-you documents are visually distinct (shared items carry an amber accent) everywhere in the list.
 - **Access control**: View-access users get a read-only editor with a banner explaining why, rather than a disabled-but-editable one. All of this is enforced server-side in the API routes, not just hidden in the UI.
+- **Request access**: a view-only user can ask the owner to upgrade them to edit access. It's an on-site request, not an email/push notification — the owner sees a badge on the document in their list and a "Requesting edit access" section in the Share dialog, with one-click Grant/Dismiss.
+- **Quick actions (⋯ menu)**: each owned document in the list has Open / Share / Delete without needing to open it first.
 - **Auth**: mocked — pick one of 3 seeded users, no password. Sets an httpOnly session cookie. See "Why mocked auth" below.
 
 ## Tech stack
@@ -98,8 +100,9 @@ This was scoped for a timeboxed build, not a Google Docs clone. Cut on purpose:
   the editor toolbar) and cut the second.
 - **Version history**, **comments**, **link sharing**, **real password auth** — all
   explicitly out of scope for this exercise per the brief, or listed as stretch.
-- **"Request access" is a no-op.** There's no notification system to back it, so it
-  shows an honest message rather than pretending to send a request.
+- **Request access is on-site only**, not email/push. The owner sees it next time
+  they're in the app (a badge in the document list, a panel in Share) — there's no
+  notification system to alert them the moment it happens.
 
 See `ARCHITECTURE.md` for the reasoning behind what stayed in scope, and
 `AI_WORKFLOW.md` for how AI tools were used while building this.
